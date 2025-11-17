@@ -1,0 +1,67 @@
+go-banking-api/
+├── cmd/
+│   └── api/
+│       └── main.go                 # Application entry point
+│
+├── internal/
+│   ├── config/
+│   │   └── config.go              # Configuration management
+│   │
+│   ├── database/
+│   │   └── database.go            # Database connection & migrations
+│   │
+│   ├── model/
+│   │   ├── user.go                # User model with validations
+│   │   ├── balance.go             # Balance model with validations
+│   │   ├── transaction.go         # Transaction model with validations
+│   │   └── audit_log.go           # AuditLog model with validations
+│   │
+│   ├── repository/                 # 🔜 Next: Database operations
+│   │   ├── user_repository.go
+│   │   ├── balance_repository.go
+│   │   ├── transaction_repository.go
+│   │   └── audit_log_repository.go
+│   │
+│   ├── service/                    # 🔜 Next: Business logic
+│   │   ├── user_service.go
+│   │   ├── balance_service.go
+│   │   ├── transaction_service.go
+│   │   └── audit_service.go
+│   │
+│   ├── handler/                    # 🔜 Next: HTTP handlers
+│   │   ├── user_handler.go
+│   │   ├── balance_handler.go
+│   │   ├── transaction_handler.go
+│   │   └── health_handler.go
+│   │
+│   ├── middleware/                 # 🔜 Next: HTTP middleware
+│   │   ├── auth.go
+│   │   ├── logger.go
+│   │   ├── cors.go
+│   │   └── rate_limit.go
+│   │
+│   └── util/                       # 🔜 Next: Utility functions
+│       ├── hash.go                # Password hashing (bcrypt)
+│       ├── jwt.go                 # JWT token generation
+│       └── response.go            # Standard API responses
+│
+├── test/                           # 🔜 Next: Tests
+│   ├── integration/
+│   │   └── api_test.go
+│   └── unit/
+│       ├── model_test.go
+│       ├── service_test.go
+│       └── repository_test.go
+│
+├── scripts/
+│   ├── test_models.go             # ✅ Model validation tests
+│   └── test_api.sh                # ✅ API curl tests
+│
+├── .env                            # Environment variables
+├── .env.example                    # Example environment variables
+├── .gitignore                      # Git ignore file
+├── docker-compose.yml              # 🔜 Docker setup
+├── Dockerfile                      # 🔜 Docker build
+├── go.mod                          # Go module file
+├── go.sum                          # Go dependencies
+└── README.md                       # Project documentation

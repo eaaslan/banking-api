@@ -1,23 +1,22 @@
 package config
 
 import (
+	"github.com/joho/godotenv"
 	"log"
 	"os"
 	"strconv"
-
-	"github.com/joho/godotenv"
 )
 
 type Config struct {
 	Environment string
-	Port        string
+	Port        int
 	DatabaseURL string
 }
 
 func Load() *Config {
 	err := godotenv.Load()
 	if err != nil {
-		log.Println("Uygulama kök dizininde .env dosyasi bulunamadi, cevresel degiskenler kullanilacak.")
+		log.Println("Cant found .env file.")
 	}
 
 	return &Config{

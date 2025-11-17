@@ -11,20 +11,15 @@ import (
 func NewGormConnection(databaseURL string) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{})
 	if err != nil {
-		return nil, fmt.Errorf("veritabanina baglanilamadi: %w", err)
+		return nil, fmt.Errorf("Cant connect to database: %w", err)
 	}
 
-	slog.Info("Veritabani migrasyonu baslatiliyor...")
-	err = db.AutoMigrate(
-		&model.User{},
-		&model.Transaction{},
-		&model.Balance{},
-		&model.AuditLog{},
-	)
+	slog.Info("Database migrations starting ...")
+	err = db.AutoMigrate(&model.User{}, &model.Balance{}, &model.Transaction{}, &model.AuditLog{})
 	if err != nil {
-		return nil, fmt.Errorf("veritabani migrasyonu basarisiz oldu: %w", err)
+		return nil, fmt.Errorf("Database migrations failed: %w", err)
 	}
 
-	slog.Info("Veritabani migrasyonu basariyla tamamlandi.")
+	slog.Info("Database migration is successful.")
 	return db, nil
 }
