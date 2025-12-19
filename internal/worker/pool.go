@@ -36,10 +36,11 @@ func (p *Pool) Start(ctx context.Context) {
 func (p *Pool) worker(ctx context.Context, id int) {
 	for {
 		select {
+		case tx := <-p.queue:
 			if err := p.processor(ctx, tx); err != nil {
 				atomic.AddInt64(&p.errorCount, 1)
-				slog.Error("Worker failed to process transaction", 
-					"worker_id", id, 
+				slog.Error("Worker failed to process transaction",
+					"worker_id", id,
 					"tx_id", tx.ID,
 					"type", tx.Type,
 					"amount", tx.Amount,
