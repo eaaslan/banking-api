@@ -12,7 +12,9 @@ import (
 	"backend/internal/config"
 	"backend/internal/db"
 	apiHandler "backend/internal/handler"
+	"backend/internal/middleware"
 	"backend/internal/repository"
+	"backend/internal/router"
 	"backend/internal/service"
 	"backend/internal/worker"
 )
@@ -44,7 +46,7 @@ func main() {
 	logger.Info("Database initialized and migrations run")
 
 	repo := repository.NewPostgresRepository(database)
-	userSvc := service.NewUserService(repo)
+	userSvc := service.NewUserService(repo, cfg.AuthSecret)
 	balSvc := service.NewBalanceService(repo)
 	txSvc := service.NewTransactionService(repo, balSvc)
 	poolCtx, poolCancel := context.WithCancel(context.Background())
@@ -56,43 +58,38 @@ func main() {
 
 	h := apiHandler.NewHandler(userSvc, txSvc, balSvc)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	r := router.NewRouter()
+	r.Use(middleware.Logger, middleware.Recovery, middleware.CORS, middleware.RateLimit)
+
+	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
-	mux.HandleFunc("/api/register", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		h.Register(w, r)
-	})
-	mux.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		h.Login(w, r)
-	})
-	mux.HandleFunc("/api/transactions", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		h.CreateTransaction(w, r)
-	})
-	mux.HandleFunc("/api/balance", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		h.GetBalance(w, r)
-	})
+	
+	// Public routes
+	r.HandleFunc("/api/v1/auth/register", h.Register)
+	r.HandleFunc("/api/v1/auth/login", h.Login)
+	r.HandleFunc("/api/v1/auth/refresh", h.Refresh)
+
+	// Protected routes
+	authMw := middleware.Auth(userSvc)
+	
+	// Transaction Routes
+	r.HandleFunc("/api/v1/transactions", h.CreateTransaction, authMw)
+	r.HandleFunc("/api/v1/transactions/history", h.GetTransactionHistory, authMw)
+	
+	// Balance Routes
+	r.HandleFunc("/api/v1/balances/current", h.GetBalance, authMw)
+	r.HandleFunc("/api/v1/balances/historical", h.GetBalanceHistory, authMw)
+	
+	// User Routes
+	roleMw := middleware.Role("admin")
+	r.HandleFunc("/api/v1/users", h.ListUsers, authMw, roleMw)
+	r.HandleFunc("/api/v1/users/delete", h.DeleteUser, authMw, roleMw) // Using query param ?id=
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
-		Handler: mux,
+		Handler: r,
 	}
 
 	go func() {

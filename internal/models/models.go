@@ -53,6 +53,20 @@ type Transaction struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+func (t *Transaction) IsValidStatusTransition(newStatus string) bool {
+	if t.Status == newStatus {
+		return true
+	}
+	if t.Status == TxStatusCompleted || t.Status == TxStatusFailed {
+		return false // Terminal states
+	}
+	if t.Status == TxStatusPending {
+		return newStatus == TxStatusCompleted || newStatus == TxStatusFailed
+	}
+	return false
+}
+
+
 type Balance struct {
 	UserID        int64     `json:"user_id"`
 	Amount        int64     `json:"amount"` // In cents

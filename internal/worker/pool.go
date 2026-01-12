@@ -61,6 +61,15 @@ func (p *Pool) worker(ctx context.Context, id int) {
 func (p *Pool) Submit(tx *models.Transaction) {
 	p.queue <- tx
 }
+
+func (p *Pool) SubmitBatch(txs []*models.Transaction) {
+	go func() {
+		for _, tx := range txs {
+			p.queue <- tx
+		}
+	}()
+}
+
 func (p *Pool) Stats() (processed int64, errors int64) {
 	return atomic.LoadInt64(&p.processedCount), atomic.LoadInt64(&p.errorCount)
 }

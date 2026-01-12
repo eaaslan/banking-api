@@ -25,6 +25,11 @@ func (s *TransactionService) SetPool(pool *worker.Pool) {
 	s.pool = pool
 }
 
+func (s *TransactionService) GetHistory(ctx context.Context, userID int64) ([]*models.Transaction, error) {
+	return s.repo.GetTransactionsByUserID(ctx, userID)
+}
+
+
 func (s *TransactionService) Create(ctx context.Context, fromID, toID *int64, amount int64, typeStr string) (*models.Transaction, error) {
 	tx := &models.Transaction{
 		FromUserID: fromID,

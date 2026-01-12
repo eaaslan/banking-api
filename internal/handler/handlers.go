@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"backend/internal/middleware"
 	"backend/internal/service"
 )
 
@@ -57,12 +58,15 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.userSvc.Authenticate(r.Context(), req.Email, req.Password)
+	user, token, err := h.userSvc.Authenticate(r.Context(), req.Email, req.Password)
 	if err != nil {
 		respondError(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
-	respondJSON(w, http.StatusOK, user)
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"user":  user,
+		"token": token,
+	})
 }
 
 func (h *Handler) CreateTransaction(w http.ResponseWriter, r *http.Request) {
@@ -85,13 +89,73 @@ func (h *Handler) CreateTransaction(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusAccepted, tx)
 }
 
+func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
+    respondError(w, http.StatusNotImplemented, "Refresh not implemented yet")
+}
+
+func (h *Handler) GetTransactionHistory(w http.ResponseWriter, r *http.Request) {
+    userIDVal := r.Context().Value(middleware.UserIDKey)
+    if userIDVal == nil {
+         respondError(w, http.StatusUnauthorized, "Unauthorized")
+         return
+    }
+    userID := int64(userIDVal.(float64))
+    
+    txs, err := h.txSvc.GetHistory(r.Context(), userID)
+    if err != nil {
+        respondError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
+    respondJSON(w, http.StatusOK, txs)
+}
+
+func (h *Handler) GetBalanceHistory(w http.ResponseWriter, r *http.Request) {
+    userIDVal := r.Context().Value(middleware.UserIDKey)
+    if userIDVal == nil {
+         respondError(w, http.StatusUnauthorized, "Unauthorized")
+         return
+    }
+    userID := int64(userIDVal.(float64))
+    
+    logs, err := h.balSvc.GetHistory(r.Context(), userID)
+    if err != nil {
+        respondError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
+    respondJSON(w, http.StatusOK, logs)
+}
+
+func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
+    users, err := h.userSvc.ListUsers(r.Context())
+    if err != nil {
+        respondError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
+    respondJSON(w, http.StatusOK, users)
+}
+
+func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+    idStr := r.URL.Query().Get("id")
+    id, err := strconv.ParseInt(idStr, 10, 64)
+    if err != nil {
+        respondError(w, http.StatusBadRequest, "Invalid ID")
+        return
+    }
+    err = h.userSvc.DeleteUser(r.Context(), id)
+    if err != nil {
+        respondError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
+    respondJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
 func (h *Handler) GetBalance(w http.ResponseWriter, r *http.Request) {
-	userIDStr := r.URL.Query().Get("user_id")
-	userID, err := strconv.ParseInt(userIDStr, 10, 64)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "Invalid user_id")
-		return
-	}
+	userIDVal := r.Context().Value(middleware.UserIDKey)
+    if userIDVal == nil {
+         respondError(w, http.StatusUnauthorized, "Unauthorized")
+         return
+    }
+    userID := int64(userIDVal.(float64))
 
 	bal, err := h.balSvc.GetBalance(r.Context(), userID)
 	if err != nil {
@@ -100,3 +164,4 @@ func (h *Handler) GetBalance(w http.ResponseWriter, r *http.Request) {
 	}
 	respondJSON(w, http.StatusOK, bal)
 }
+
