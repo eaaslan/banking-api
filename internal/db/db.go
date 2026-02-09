@@ -31,7 +31,6 @@ func NewDB(host, port, user, password, dbname string) (*sql.DB, error) {
 	return db, nil
 }
 
-// RunMigrations executes all .sql files in the migrations directory
 func RunMigrations(db *sql.DB, migrationsDir string) error {
 	files, err := os.ReadDir(migrationsDir)
 	if err != nil {
@@ -48,7 +47,6 @@ func RunMigrations(db *sql.DB, migrationsDir string) error {
 
 			slog.Info("Running migration", "file", file.Name())
 			
-			// Split by semicolon to handle multiple statements
 			requests := strings.Split(string(content), ";")
 			for _, request := range requests {
 				cmd := strings.TrimSpace(request)

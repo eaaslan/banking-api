@@ -4,20 +4,26 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
+
+	"backend/internal/cache"
 	"backend/internal/models"
 	"backend/internal/repository"
 )
 
 type BalanceService struct {
-	repo  repository.Repository // Changed to full Repository interface
+	repo  repository.Repository
 	locks sync.Map
+	redis *cache.RedisClient
 }
 
-func NewBalanceService(repo repository.Repository) *BalanceService {
+func NewBalanceService(repo repository.Repository, redisClient *cache.RedisClient) *BalanceService {
 	return &BalanceService{
-		repo: repo,
+		repo:  repo,
+		redis: redisClient,
 	}
 }
 
@@ -31,6 +37,16 @@ func (s *BalanceService) GetBalance(ctx context.Context, userID int64) (*models.
 	mu.RLock()
 	defer mu.RUnlock()
 
+	// Try cache
+	key := fmt.Sprintf("balance:%d", userID)
+	val, err := s.redis.Client.Get(ctx, key).Result()
+	if err == nil {
+		var bal models.Balance
+		if err := json.Unmarshal([]byte(val), &bal); err == nil {
+			return &bal, nil
+		}
+	}
+
 	bal, err := s.repo.GetBalanceByUserID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -38,6 +54,12 @@ func (s *BalanceService) GetBalance(ctx context.Context, userID int64) (*models.
 		}
 		return nil, err
 	}
+
+	// Set cache
+	if bytes, err := json.Marshal(bal); err == nil {
+		s.redis.Client.Set(ctx, key, bytes, 10*time.Minute)
+	}
+
 	return bal, nil
 }
 
@@ -63,6 +85,9 @@ func (s *BalanceService) UpdateBalance(ctx context.Context, userID int64, amount
         }
     }
     
+	// Invalidate cache
+	s.redis.Client.Del(ctx, fmt.Sprintf("balance:%d", userID))
+
     // Audit Log
     _ = s.repo.CreateAuditLog(ctx, &models.AuditLog{
         EntityType: "user",
@@ -104,5 +129,12 @@ func (s *BalanceService) Debit(ctx context.Context, userID int64, amount int64) 
     }
 
 	balance.Amount -= amount
-	return s.repo.UpdateBalance(ctx, balance)
+	if err := s.repo.UpdateBalance(ctx, balance); err != nil {
+		return err
+	}
+	
+	// Invalidate cache
+	s.redis.Client.Del(ctx, fmt.Sprintf("balance:%d", userID))
+	
+	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"backend/internal/cache"
 	"backend/internal/config"
 	"backend/internal/db"
 	apiHandler "backend/internal/handler"
@@ -16,7 +17,11 @@ import (
 	"backend/internal/repository"
 	"backend/internal/router"
 	"backend/internal/service"
+	"backend/internal/telemetry"
 	"backend/internal/worker"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 func main() {
@@ -32,12 +37,34 @@ func main() {
 
 	logger.Info("Initializing application...", "env", cfg.Environment)
 
+	// Init Tracing
+	shutdownTrace, err := telemetry.InitTracer(context.Background(), cfg.OTLPEndpoint, "banking-api")
+	if err != nil {
+		logger.Error("Failed to init tracer", "error", err)
+	} else {
+		defer func() {
+			if err := shutdownTrace(context.Background()); err != nil {
+				logger.Error("Failed to shutdown tracer", "error", err)
+			}
+		}()
+	}
+
 	database, err := db.NewDB(cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName)
 	if err != nil {
 		logger.Error("Failed to initialize database", "error", err)
 		os.Exit(1)
 	}
 	defer database.Close()
+
+	// Init Redis
+	redisClient, err := cache.NewRedisClient(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword)
+	if err != nil {
+		// Verify if we should fail or continue without Redis?
+		// Plan said "The application will fail to start if Redis is not available"
+		logger.Error("Failed to initialize Redis", "error", err)
+		os.Exit(1)
+	}
+	defer redisClient.Close()
 
 	if err := db.RunMigrations(database, "migrations"); err != nil {
 		logger.Error("Failed to run migrations", "error", err)
@@ -47,7 +74,7 @@ func main() {
 
 	repo := repository.NewPostgresRepository(database)
 	userSvc := service.NewUserService(repo, cfg.AuthSecret)
-	balSvc := service.NewBalanceService(repo)
+	balSvc := service.NewBalanceService(repo, redisClient)
 	txSvc := service.NewTransactionService(repo, balSvc)
 	poolCtx, poolCancel := context.WithCancel(context.Background())
 	defer poolCancel()
@@ -59,8 +86,10 @@ func main() {
 	h := apiHandler.NewHandler(userSvc, txSvc, balSvc)
 
 	r := router.NewRouter()
-	r.Use(middleware.Logger, middleware.Recovery, middleware.CORS, middleware.RateLimit)
+	r.Use(middleware.Logger, middleware.Metrics, middleware.Recovery, middleware.CORS, middleware.RateLimit)
 
+	r.Handle("/metrics", promhttp.Handler())
+	
 	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
@@ -87,9 +116,11 @@ func main() {
 	r.HandleFunc("/api/v1/users", h.ListUsers, authMw, roleMw)
 	r.HandleFunc("/api/v1/users/delete", h.DeleteUser, authMw, roleMw) // Using query param ?id=
 
+	otelHandler := otelhttp.NewHandler(r, "api-server")
+
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
-		Handler: r,
+		Handler: otelHandler,
 	}
 
 	go func() {
